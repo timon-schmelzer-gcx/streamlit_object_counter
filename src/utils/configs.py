@@ -24,8 +24,6 @@ class DetectionConfig():
     min_contour_length: typing.Optional[int]=None
     max_contour_length: typing.Optional[int]=None
 
-    convert_grayscale: bool=False
-
 default_config = DetectionConfig(
     thresh_val=150,
     thresh_type=1,

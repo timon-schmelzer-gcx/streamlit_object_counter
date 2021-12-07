@@ -10,6 +10,7 @@ opencv-python = "^4.5.4"
 numpy = "^1.21.4"
 streamlit = "^1.2.0"
 watchdog = "^2.1.6"
+plotly = "^5.4.0"
 
 [tool.poetry.dev-dependencies]
 

@@ -2,7 +2,10 @@ import typing
 
 import cv2
 import numpy as np
+from numpy.lib.polynomial import poly
 import streamlit as st
+import plotly.express as px
+import plotly.graph_objects as go
 
 from utils.configs import IMAGES, DetectionConfig, RunningModes
 from utils.configs import default_config
@@ -44,23 +47,30 @@ def find_contours(img: np.array,
 
     return contours
 
+def filter_contours(contours: typing.Tuple,
+                    min_contour_length: int=-9999,
+                    max_contour_length: int=9999) -> np.array:
+    '''Filter contours by given criteria.'''
+    return np.array([
+        contour for contour in contours
+        if len(contour) >= min_contour_length and len(contour) <= max_contour_length
+    ], dtype=object)
+
+
 def draw_contours(img: np.array,
                   contours: np.array,
-                  min_contour_length: int=-9999,
-                  max_contour_length: int=9999,
                   contour_index: int=-1,
                   contour_color: typing.Tuple=(255, 0, 0, 1),
                   contour_thickness: int=0) -> typing.Tuple[int, typing.Tuple]:
     '''Add contours if they fullfill the given criteria.'''
     n_contours = 0
     for contour in contours:
-        if len(contour) >= min_contour_length and len(contour) <= max_contour_length:
-            cv2.drawContours(img,
-                             [contour],
-                             contour_index,
-                             contour_color,
-                             contour_thickness)
-            n_contours += 1
+        cv2.drawContours(img,
+                         [contour],
+                         contour_index,
+                         contour_color,
+                         contour_thickness)
+        n_contours += 1
 
     return n_contours, img
 
@@ -71,6 +81,17 @@ def format_uploaded_image(uploaded_file: typing.Any) -> np.array:
         img = cv2.imdecode(file_bytes, 1)
 
         return img
+
+def polygon_sizes(contours: list) -> list[float]:
+    sizes = []
+    for contour in contours:
+        xs = np.array(contour, dtype=object)[:,0,0]
+        ys = np.array(contour, dtype=object)[:,0,1]
+        sizes.append(calculate_ploygon_size(xs, ys))
+    return np.array(sizes)
+
+def calculate_ploygon_size(xs: np.array, ys: np.array):
+    return 0.5*np.abs(np.dot(xs,np.roll(ys,1))-np.dot(ys,np.roll(xs,1)))
 
 def create_sidebar() -> typing.Tuple[np.array, DetectionConfig]:
     '''Create sidebar widgets, apply pre-defined configs and return adjusted ones.'''
@@ -134,28 +155,38 @@ def create_sidebar() -> typing.Tuple[np.array, DetectionConfig]:
                                                   initial_config.contour_method,
                                                   help='Contour Approximation Method, see [here](https://docs.opencv.org/3.4/d3/dc0/group__imgproc__shape.html#ga4303f45752694956374734a03c54d5ff).')
 
-    new_config.min_contour_length = st.sidebar.slider(
-        'Min Contour Length',
+    min_contour_length, max_contour_length = st.sidebar.slider(
+        'Min/Max Contour Length',
         min_value=0,
         max_value=100,
-        value=initial_config.min_contour_length,
-        help='Minimum Number of Vertices for Contour Graph.')
-    new_config.max_contour_length = st.sidebar.slider(
-        'Max Contour Length',
-        min_value=0,
-        max_value=100,
-        value=initial_config.max_contour_length,
-        help='Maximum Number of Vertices for Contour Graph.'
-    )
+        value=(initial_config.min_contour_length, initial_config.max_contour_length),
+        help='Number of Vertices for Contour Graph.')
 
-    if st.sidebar.checkbox('Convert to grayscale?'):
-        new_config.convert_grayscale = True
+    new_config.min_contour_length = min_contour_length
+    new_config.max_contour_length = max_contour_length
+
     return img, new_config
 
+def plot_histogram(data: np.array) -> go.Figure:
+    '''Plot histogram of given data.'''
+    fig = px.histogram(x=data)
+    fig.update_layout(
+        xaxis_title='Polygon Areas',
+        yaxis_title='Polygon Sizes'
+    )
+    return fig
 
 def main():
     st.set_page_config(page_title='Object Counter',
+                       layout='wide',
                        page_icon='🔢')
+    st.markdown('''
+       # Object Counter App
+       This app helps you to count similar shaped objects on a given image. To improve
+       the object detection performance, you can adjust the parameters on the left hand side.
+       Look at the example to get a feeling for that. Afterwards, upload an image and try it
+       yourself. Good luck 🍀!
+    ''')
     img, config = create_sidebar()
 
     if img is None:
@@ -167,18 +198,46 @@ def main():
                              thresh_type=config.thresh_type,
                              contour_mode=config.contour_mode,
                              contour_method=config.contour_method)
+
+    contours_filtered = filter_contours(contours,
+                                        min_contour_length=config.min_contour_length,
+                                        max_contour_length=config.max_contour_length)
+
+    # refilter contours by polygon size
+    polygons = polygon_sizes(contours_filtered)
+    min_area, max_area = st.sidebar.slider('Polygon Size',
+                                           value=(int(min(polygons)), int(max(polygons))+1),
+                                           min_value=int(min(polygons)),
+                                           max_value=int(max(polygons))+1)
+    contour_indices = np.argwhere((polygons >= min_area) & (polygons <= max_area))
+    contours_refiltered = []
+    polygons_filtered = []
+    for i, (polygon, contour) in enumerate(zip(polygons, contours_filtered)):
+        if i in contour_indices:
+            contours_refiltered.append(contour)
+            polygons_filtered.append(polygon)
+
     n_objects, img = draw_contours(img,
-                                   contours,
-                                   min_contour_length=config.min_contour_length,
-                                   max_contour_length=config.max_contour_length)
+                                   contours_refiltered)
+
+    n_objects, img_contours = draw_contours(np.zeros(shape=img.shape) + 255,
+                                            contours_refiltered)
 
     st.subheader(f'Objects found: {n_objects}')
+    fig = plot_histogram(polygons_filtered)
 
-    if config.convert_grayscale:
-        img = convert_gray(img)
-
-    st.image(img,
-             use_column_width=True)
+    col_one, col_two, col_three = st.columns((1, 1, 1))
+    col_one.image(img,
+                caption='Original image with contours',
+                use_column_width=True)
+    col_two.image(img_contours,
+                caption='Contours',
+                clamp=True,
+                use_column_width=True)
+    col_three.markdown('If the objects are equal in size, the polygon areas '
+                       'should follow a normal distribution. Modify the "Polygon Size" '
+                       'attribute to filter out outliers.')
+    col_three.plotly_chart(fig)
 
 if __name__=='__main__':
     main()
