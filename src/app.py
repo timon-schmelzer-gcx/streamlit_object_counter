@@ -101,7 +101,7 @@ def create_sidebar() -> typing.Tuple[np.array, DetectionConfig]:
     mode = st.sidebar.radio('Running Mode', available_modes)
     mode = mode.split(' ')[0]
 
-    st.sidebar.markdown("""---""")
+    st.sidebar.markdown('---')
 
     initial_config = default_config
     new_config = DetectionConfig()
@@ -203,6 +203,10 @@ def main():
                                         min_contour_length=config.min_contour_length,
                                         max_contour_length=config.max_contour_length)
 
+    if len(contours_filtered) < 1:
+        st.warning('No contours found for current selection. Try to loosen it a bit!')
+        return
+
     # refilter contours by polygon size
     polygons = polygon_sizes(contours_filtered)
     min_area, max_area = st.sidebar.slider('Polygon Size',
@@ -226,18 +230,23 @@ def main():
     st.subheader(f'Objects found: {n_objects}')
     fig = plot_histogram(polygons_filtered)
 
-    col_one, col_two, col_three = st.columns((1, 1, 1))
-    col_one.image(img,
-                caption='Original image with contours',
-                use_column_width=True)
-    col_two.image(img_contours,
-                caption='Contours',
-                clamp=True,
-                use_column_width=True)
-    col_three.markdown('If the objects are equal in size, the polygon areas '
-                       'should follow a normal distribution. Modify the "Polygon Size" '
-                       'attribute to filter out outliers.')
-    col_three.plotly_chart(fig)
+
+    st.image(img,
+             caption='Original image with contours',
+             use_column_width=True)
+
+    st.sidebar.markdown('---')
+    st.sidebar.subheader('Advanced Options')
+    if st.sidebar.checkbox('Show Contours Only Image'):
+        st.image(img_contours,
+                    caption='Contours',
+                    clamp=True,
+                    use_column_width=True)
+    if st.sidebar.checkbox('Show Polygon Size Distribution'):
+        st.markdown('If the objects are equal in size, the polygon areas '
+                    'should follow a normal distribution. Modify the "Polygon Size" '
+                    'attribute to filter out outliers.')
+        st.plotly_chart(fig, use_container_width=True)
 
 if __name__=='__main__':
     main()
