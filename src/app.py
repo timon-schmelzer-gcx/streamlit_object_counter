@@ -107,7 +107,7 @@ def create_sidebar() -> typing.Tuple[np.array, DetectionConfig]:
     new_config = DetectionConfig()
 
     if mode == RunningModes.UPLOAD.name:
-        uploaded_file = st.sidebar.file_uploader('Upload Image', ['png', 'jpg', 'jpeg'])
+        uploaded_file = st.sidebar.file_uploader('Upload Image', ['png', 'jpg', 'jpeg'], )
 
         img = format_uploaded_image(uploaded_file)
 
@@ -178,7 +178,6 @@ def plot_histogram(data: np.array) -> go.Figure:
 
 def main():
     st.set_page_config(page_title='Object Counter',
-                       layout='wide',
                        page_icon='🔢')
     st.markdown('''
        # Object Counter App
@@ -249,4 +248,7 @@ def main():
         st.plotly_chart(fig, use_container_width=True)
 
 if __name__=='__main__':
-    main()
+    try:
+        main()
+    except Exception as e:
+        st.error(f"Something went wrong, sorry 😐. Please reload the page and try again.\n\n{str(e)}")
